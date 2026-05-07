@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logi-Dex — Field Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Cinzel:wght@600;800&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #1a1a0f;
+  --parchment: #f2ead8;
+  --parchment-dark: #e8dcc4;
+  --parchment-mid: #d4c9a8;
+  --scan-green: #3aff7a;
+  --scan-green-dim: #1a8c3a;
+  --scan-amber: #ffc84a;
+  --scan-amber-dim: #8c6a10;
+  --rarity-common: #7aaa4a;
+  --rarity-uncommon: #4a9aff;
+  --rarity-rare: #c04aff;
+  --rarity-legendary: #ff8c00;
+  --panel-bg: #0f1a0f;
+  --panel-border: #2a4a2a;
+  --panel-glow: rgba(58,255,122,0.08);
+  --red-badge: #cc2200;
+  --scan-line: rgba(58,255,122,0.04);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Lora', Georgia, serif;
+  background: var(--panel-bg);
+  color: var(--scan-green);
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    var(--scan-line) 3px,
+    var(--scan-line) 4px
+  );
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.crt-flicker {
+  animation: flicker 8s infinite;
+}
+@keyframes flicker {
+  0%,96%,100% { opacity: 1; }
+  97% { opacity: 0.97; }
+  98% { opacity: 1; }
+  99% { opacity: 0.98; }
+}
+
+/* ── HEADER ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(15,26,15,0.95);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  font-family: 'Cinzel', serif;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--scan-green);
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 20px rgba(58,255,122,0.4);
+}
+
+.logo span {
+  color: var(--scan-amber);
+  text-shadow: 0 0 20px rgba(255,200,74,0.4);
+}
+
+.header-stats {
+  display: flex;
+  gap: 1.5rem;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  color: var(--scan-green-dim);
+}
+
+.header-stat strong {
+  color: var(--scan-green);
+  display: block;
+  font-size: 1rem;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(10,18,10,0.9);
+}
+
+.nav-tab {
+  padding: 0.75rem 1.5rem;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: var(--scan-green-dim);
+  cursor: pointer;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.nav-tab:hover { color: var(--scan-green); }
+.nav-tab.active {
+  color: var(--scan-amber);
+  border-bottom-color: var(--scan-amber);
+  background: rgba(255,200,74,0.05);
+}
+
+/* ── VIEWS ── */
+.view { display: none; padding: 1.5rem; }
+.view.active { display: block; }
+
+/* ── SCANNER VIEW ── */
+.scanner-area {
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: rgba(5,12,5,0.8);
+  overflow: hidden;
+  position: relative;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.scanner-area:hover { border-color: var(--scan-green-dim); }
+.scanner-area.drag-over { border-color: var(--scan-green); background: rgba(58,255,122,0.05); }
+
+.scanner-idle {
+  text-align: center;
+  padding: 2rem;
+}
+
+.scanner-crosshair {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 1rem;
+  position: relative;
+}
+
+.scanner-crosshair::before,
+.scanner-crosshair::after {
+  content: '';
+  position: absolute;
+  background: var(--scan-green-dim);
+}
+.scanner-crosshair::before { width: 1px; height: 100%; left: 50%; top: 0; }
+.scanner-crosshair::after { width: 100%; height: 1px; top: 50%; left: 0; }
+
+.corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-color: var(--scan-green);
+  border-style: solid;
+  border-width: 0;
+}
+.corner.tl { top: 0; left: 0; border-top-width: 2px; border-left-width: 2px; }
+.corner.tr { top: 0; right: 0; border-top-width: 2px; border-right-width: 2px; }
+.corner.bl { bottom: 0; left: 0; border-bottom-width: 2px; border-left-width: 2px; }
+.corner.br { bottom: 0; right: 0; border-bottom-width: 2px; border-right-width: 2px; }
+
+.scanner-label {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  color: var(--scan-green-dim);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.scanner-hint {
+  font-size: 0.85rem;
+  color: var(--scan-green-dim);
+  font-style: italic;
+}
+
+.scan-line-anim {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--scan-green), transparent);
+  animation: scanDown 2.5s ease-in-out infinite;
+  opacity: 0.6;
+}
+@keyframes scanDown {
+  0% { top: 0; opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { top: 100%; opacity: 0; }
+}
+
+#preview-img {
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  display: none;
+}
+
+.scanner-controls {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid var(--scan-green-dim);
+  background: transparent;
+  color: var(--scan-green);
+  cursor: pointer;
+  transition: all 0.15s;
+  border-radius: 2px;
+}
+
+.btn:hover {
+  background: rgba(58,255,122,0.1);
+  border-color: var(--scan-green);
+}
+
+.btn.primary {
+  border-color: var(--scan-amber);
+  color: var(--scan-amber);
+}
+.btn.primary:hover { background: rgba(255,200,74,0.1); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+#file-input { display: none; }
+
+/* ── SCANNING ANIMATION ── */
+.scanning-overlay {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  width: 100%;
+}
+
+.scanning-ring {
+  width: 64px;
+  height: 64px;
+  border: 2px solid var(--panel-border);
+  border-top-color: var(--scan-green);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.scanning-text {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  color: var(--scan-green);
+  letter-spacing: 0.2em;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ── ENTRY CARD ── */
+.entry-card {
+  display: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: rgba(5,12,5,0.95);
+  overflow: hidden;
+  animation: cardReveal 0.4s ease-out;
+}
+@keyframes cardReveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.entry-header {
+  background: rgba(58,255,122,0.06);
+  border-bottom: 1px solid var(--panel-border);
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.entry-number {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.7rem;
+  color: var(--scan-green-dim);
+  letter-spacing: 0.15em;
+}
+
+.entry-name {
+  font-family: 'Cinzel', serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--scan-green);
+  margin: 0.1rem 0;
+}
+
+.entry-scientific {
+  font-family: 'Lora', serif;
+  font-style: italic;
+  font-size: 0.8rem;
+  color: var(--scan-green-dim);
+}
+
+.rarity-badge {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.6rem;
+  border-radius: 2px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.rarity-COMMON { color: var(--rarity-common); border-color: var(--rarity-common); background: rgba(122,170,74,0.1); }
+.rarity-UNCOMMON { color: var(--rarity-uncommon); border-color: var(--rarity-uncommon); background: rgba(74,154,255,0.1); }
+.rarity-RARE { color: var(--rarity-rare); border-color: var(--rarity-rare); background: rgba(192,74,255,0.1); }
+.rarity-LEGENDARY { color: var(--rarity-legendary); border-color: var(--rarity-legendary); background: rgba(255,140,0,0.1); }
+
+.entry-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.entry-image-panel {
+  border-right: 1px solid var(--panel-border);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.entry-photo {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  border-radius: 2px;
+  border: 1px solid var(--panel-border);
+  filter: sepia(0.2) contrast(1.05);
+}
+
+.entry-type-badges {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.type-badge {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 2px;
+  background: rgba(58,255,122,0.1);
+  border: 1px solid var(--scan-green-dim);
+  color: var(--scan-green);
+  text-transform: uppercase;
+}
+
+.entry-stats-panel {
+  padding: 1rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.stat-block {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  padding: 0.5rem 0.6rem;
+}
+
+.stat-label {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: var(--scan-green-dim);
+  text-transform: uppercase;
+  margin-bottom: 0.15rem;
+}
+
+.stat-value {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  color: var(--scan-amber);
+  font-weight: 700;
+}
+
+.stat-bar-row {
+  margin-bottom: 0.4rem;
+}
+
+.stat-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  color: var(--scan-green-dim);
+  margin-bottom: 0.2rem;
+}
+
+.stat-bar-track {
+  height: 4px;
+  background: rgba(58,255,122,0.1);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: var(--scan-green);
+  border-radius: 0;
+  transition: width 0.8s ease-out;
+}
+
+.stat-bar-fill.amber { background: var(--scan-amber); }
+.stat-bar-fill.blue { background: #4a9aff; }
+
+.entry-description {
+  border-top: 1px solid var(--panel-border);
+  padding: 1rem 1.25rem;
+}
+
+.desc-label {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  color: var(--scan-green-dim);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.desc-text {
+  font-family: 'Lora', serif;
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: rgba(242,234,216,0.85);
+}
+
+.entry-footer {
+  border-top: 1px solid var(--panel-border);
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0,0,0,0.2);
+}
+
+.entry-points {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  color: var(--scan-amber);
+}
+
+.entry-points strong {
+  font-size: 1.1rem;
+}
+
+.entry-location {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  color: var(--scan-green-dim);
+  letter-spacing: 0.1em;
+}
+
+/* ── COLLECTION VIEW ── */
+.collection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.collection-title {
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  color: var(--scan-green);
+  letter-spacing: 0.1em;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--scan-green-dim);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+.filter-btn:hover, .filter-btn.active {
+  border-color: var(--scan-green-dim);
+  color: var(--scan-green);
+  background: rgba(58,255,122,0.06);
+}
+
+.collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.collection-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: rgba(5,12,5,0.8);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.collection-card:hover {
+  border-color: var(--scan-green-dim);
+  background: rgba(58,255,122,0.04);
+  transform: translateY(-1px);
+}
+
+.collection-card-img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  filter: sepia(0.15) contrast(1.05);
+  display: block;
+}
+
+.collection-card-img.placeholder {
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+.collection-card-body {
+  padding: 0.6rem 0.75rem;
+}
+
+.collection-card-name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  color: var(--scan-green);
+  margin-bottom: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collection-card-meta {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.6rem;
+  color: var(--scan-green-dim);
+  letter-spacing: 0.08em;
+}
+
+.collection-card-rarity {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.card-rarity-COMMON { background: var(--rarity-common); }
+.card-rarity-UNCOMMON { background: var(--rarity-uncommon); }
+.card-rarity-RARE { background: var(--rarity-rare); box-shadow: 0 0 6px var(--rarity-rare); }
+.card-rarity-LEGENDARY { background: var(--rarity-legendary); box-shadow: 0 0 8px var(--rarity-legendary); animation: legendGlow 1.5s ease-in-out infinite; }
+@keyframes legendGlow { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.empty-collection {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--scan-green-dim);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+}
+
+/* ── PROFILE VIEW ── */
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.profile-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: rgba(5,12,5,0.8);
+  padding: 1rem 1.25rem;
+}
+
+.profile-card-label {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  color: var(--scan-green-dim);
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+
+.profile-card-value {
+  font-family: 'Cinzel', serif;
+  font-size: 1.8rem;
+  color: var(--scan-amber);
+}
+
+.profile-card-sub {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.7rem;
+  color: var(--scan-green-dim);
+  margin-top: 0.1rem;
+}
+
+.rank-display {
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: rgba(5,12,5,0.8);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.rank-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.rank-info { flex: 1; }
+
+.rank-title {
+  font-family: 'Cinzel', serif;
+  font-size: 1.1rem;
+  color: var(--scan-amber);
+  margin-bottom: 0.2rem;
+}
+
+.rank-progress-label {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  color: var(--scan-green-dim);
+  letter-spacing: 0.1em;
+  margin-bottom: 0.4rem;
+}
+
+.rank-bar-track {
+  height: 6px;
+  background: rgba(58,255,122,0.1);
+  border-radius: 0;
+}
+
+.rank-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--scan-green-dim), var(--scan-green));
+  transition: width 1s ease-out;
+}
+
+.achievements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.achievement {
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: rgba(5,12,5,0.8);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  opacity: 0.4;
+}
+
+.achievement.unlocked {
+  opacity: 1;
+  border-color: rgba(58,255,122,0.3);
+}
+
+.achievement-icon { font-size: 1.3rem; }
+
+.achievement-name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  color: var(--scan-green);
+}
+
+.achievement-desc {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  color: var(--scan-green-dim);
+  letter-spacing: 0.06em;
+}
+
+/* ── API KEY BANNER ── */
+.api-banner {
+  background: rgba(255,200,74,0.06);
+  border: 1px solid rgba(255,200,74,0.3);
+  border-radius: 2px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.api-banner-text {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  color: var(--scan-amber);
+  margin-bottom: 0.6rem;
+}
+
+.api-key-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.api-key-input {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--scan-amber-dim);
+  color: var(--scan-amber);
+  padding: 0.5rem 0.75rem;
+  border-radius: 2px;
+  flex: 1;
+  min-width: 0;
+  -webkit-appearance: none;
+  autocomplete: off;
+  autocorrect: off;
+  autocapitalize: off;
+  spellcheck: false;
+}
+
+.api-key-input:focus {
+  outline: none;
+  border-color: var(--scan-amber);
+}
+
+.api-save-btn {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--scan-amber);
+  background: rgba(255,200,74,0.15);
+  color: var(--scan-amber);
+  cursor: pointer;
+  border-radius: 2px;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.api-save-btn:active {
+  background: rgba(255,200,74,0.3);
+}
+
+.api-confirmed {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  color: var(--scan-green);
+  margin-top: 0.4rem;
+  display: none;
+  letter-spacing: 0.1em;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 600px) {
+  .entry-body { grid-template-columns: 1fr; }
+  .entry-image-panel { border-right: none; border-bottom: 1px solid var(--panel-border); }
+  .profile-grid { grid-template-columns: 1fr; }
+  .header-stats { display: none; }
+  .logo { font-size: 1.2rem; }
+}
+
+/* ── TOAST ── */
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--panel-bg);
+  border: 1px solid var(--scan-green);
+  color: var(--scan-green);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  padding: 0.6rem 1.2rem;
+  border-radius: 2px;
+  z-index: 9999;
+  transition: transform 0.3s ease;
+  white-space: nowrap;
+}
+
+.toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body class="crt-flicker">
+
+<header class="header">
+  <div class="logo">LOGI<span>-DEX</span></div>
+  <div class="header-stats">
+    <div class="header-stat">
+      <strong id="hdr-total">0</strong>
+      DISCOVERED
+    </div>
+    <div class="header-stat">
+      <strong id="hdr-score">0</strong>
+      FIELD PTS
+    </div>
+    <div class="header-stat">
+      <strong id="hdr-streak">0</strong>
+      DAY STREAK
+    </div>
+  </div>
+</header>
+
+<nav class="nav-tabs">
+  <button class="nav-tab active" onclick="switchView('scan')">⬡ SCANNER</button>
+  <button class="nav-tab" onclick="switchView('collection')">⬡ FIELD LOG</button>
+  <button class="nav-tab" onclick="switchView('profile')">⬡ ADVISOR</button>
+</nav>
+
+<!-- ══ SCANNER VIEW ══ -->
+<div id="view-scan" class="view active">
+
+  <div class="api-banner" id="api-banner">
+    <div class="api-banner-text">⚠ GEMINI API KEY REQUIRED — Paste your key to activate the scanner</div>
+    <div class="api-key-row">
+      <input class="api-key-input" id="api-key-input" type="password"
+        placeholder="AIza..."
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+      <button class="api-save-btn" onclick="saveApiKeyBtn()">SAVE KEY</button>
+    </div>
+    <div class="api-confirmed" id="api-confirmed">✓ KEY SAVED — SCANNER ACTIVE</div>
+  </div>
+
+  <div class="scanner-area" id="scanner-area"
+    onclick="document.getElementById('file-input').click()"
+    ondragover="handleDragOver(event)"
+    ondragleave="handleDragLeave(event)"
+    ondrop="handleDrop(event)">
+
+    <div class="scan-line-anim"></div>
+
+    <div class="scanner-idle" id="scanner-idle">
+      <div class="scanner-crosshair">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+      </div>
+      <div class="scanner-label">Field Scanner Active</div>
+      <div class="scanner-hint">Tap to photograph · Drag & drop image · Plants & Animals</div>
+    </div>
+
+    <img id="preview-img" alt="Specimen preview" />
+
+    <div class="scanning-overlay" id="scanning-overlay">
+      <div class="scanning-ring"></div>
+      <div class="scanning-text">ANALYZING SPECIMEN...</div>
+    </div>
+
+  </div>
+
+  <input type="file" id="file-input" accept="image/*" capture="environment" onchange="handleFileSelect(event)" />
+
+  <div class="scanner-controls">
+    <button class="btn primary" onclick="document.getElementById('file-input').click()">▶ SCAN SPECIMEN</button>
+    <button class="btn" id="btn-analyze" onclick="analyzeImage()" disabled>◈ IDENTIFY</button>
+    <button class="btn" id="btn-log" onclick="logEntry()" disabled>+ LOG ENTRY</button>
+    <button class="btn" onclick="clearScanner()">✕ CLEAR</button>
+  </div>
+
+  <div class="entry-card" id="entry-card">
+    <div class="entry-header">
+      <div>
+        <div class="entry-number" id="entry-number">#001</div>
+        <div class="entry-name" id="entry-name">—</div>
+        <div class="entry-scientific" id="entry-scientific">—</div>
+      </div>
+      <div class="rarity-badge" id="rarity-badge">—</div>
+    </div>
+
+    <div class="entry-body">
+      <div class="entry-image-panel">
+        <img class="entry-photo" id="entry-photo" src="" alt="Specimen" />
+        <div class="entry-type-badges" id="entry-types"></div>
+        <div style="font-family:'Courier Prime',monospace;font-size:0.65rem;color:var(--scan-green-dim);letter-spacing:0.1em;">
+          HABITAT: <span id="entry-habitat" style="color:var(--scan-green);">—</span>
+        </div>
+        <div style="font-family:'Courier Prime',monospace;font-size:0.65rem;color:var(--scan-green-dim);letter-spacing:0.1em;">
+          REGION: <span id="entry-region" style="color:var(--scan-green);">—</span>
+        </div>
+      </div>
+
+      <div class="entry-stats-panel">
+        <div class="stats-grid">
+          <div class="stat-block">
+            <div class="stat-label">Lifespan</div>
+            <div class="stat-value" id="stat-lifespan">—</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-label">Size</div>
+            <div class="stat-value" id="stat-size">—</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-label">Diet</div>
+            <div class="stat-value" id="stat-diet">—</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-label">Status</div>
+            <div class="stat-value" id="stat-status">—</div>
+          </div>
+        </div>
+
+        <div class="stat-bar-row">
+          <div class="stat-bar-label"><span>SPEED</span><span id="bar-speed-val">0</span></div>
+          <div class="stat-bar-track"><div class="stat-bar-fill" id="bar-speed" style="width:0%"></div></div>
+        </div>
+        <div class="stat-bar-row">
+          <div class="stat-bar-label"><span>STEALTH</span><span id="bar-stealth-val">0</span></div>
+          <div class="stat-bar-track"><div class="stat-bar-fill amber" id="bar-stealth" style="width:0%"></div></div>
+        </div>
+        <div class="stat-bar-row">
+          <div class="stat-bar-label"><span>RARITY SCORE</span><span id="bar-rarity-val">0</span></div>
+          <div class="stat-bar-track"><div class="stat-bar-fill blue" id="bar-rarity" style="width:0%"></div></div>
+        </div>
+        <div class="stat-bar-row">
+          <div class="stat-bar-label"><span>DANGER LVL</span><span id="bar-danger-val">0</span></div>
+          <div class="stat-bar-track"><div class="stat-bar-fill" id="bar-danger" style="width:0%;background:#e24b4a"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="entry-description">
+      <div class="desc-label">Field Notes</div>
+      <div class="desc-text" id="entry-description">—</div>
+    </div>
+
+    <div class="entry-footer">
+      <div class="entry-points">+<strong id="entry-pts">0</strong> FIELD POINTS</div>
+      <div class="entry-location" id="entry-location">LOCATION: UNKNOWN</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ COLLECTION VIEW ══ -->
+<div id="view-collection" class="view">
+  <div class="collection-header">
+    <div class="collection-title">FIELD LOG</div>
+    <div class="filter-bar">
+      <button class="filter-btn active" onclick="filterCollection('ALL', this)">ALL</button>
+      <button class="filter-btn" onclick="filterCollection('PLANT', this)">PLANTS</button>
+      <button class="filter-btn" onclick="filterCollection('ANIMAL', this)">ANIMALS</button>
+      <button class="filter-btn" onclick="filterCollection('RARE', this)">RARE+</button>
+    </div>
+  </div>
+  <div class="collection-grid" id="collection-grid">
+    <div class="empty-collection">NO SPECIMENS LOGGED<br><br>Use the scanner to begin your field log.</div>
+  </div>
+</div>
+
+<!-- ══ PROFILE VIEW ══ -->
+<div id="view-profile" class="view">
+  <div class="profile-grid">
+    <div class="profile-card">
+      <div class="profile-card-label">Total Discovered</div>
+      <div class="profile-card-value" id="prof-total">0</div>
+      <div class="profile-card-sub">species logged</div>
+    </div>
+    <div class="profile-card">
+      <div class="profile-card-label">Field Points</div>
+      <div class="profile-card-value" id="prof-score">0</div>
+      <div class="profile-card-sub">lifetime earned</div>
+    </div>
+    <div class="profile-card">
+      <div class="profile-card-label">Day Streak</div>
+      <div class="profile-card-value" id="prof-streak">0</div>
+      <div class="profile-card-sub">consecutive days</div>
+    </div>
+    <div class="profile-card">
+      <div class="profile-card-label">Rarest Find</div>
+      <div class="profile-card-value" id="prof-rarest" style="font-size:1rem;padding-top:0.4rem">—</div>
+      <div class="profile-card-sub" id="prof-rarest-type">—</div>
+    </div>
+  </div>
+
+  <div class="rank-display">
+    <div class="rank-icon" id="rank-icon">🌱</div>
+    <div class="rank-info">
+      <div class="rank-title" id="rank-title">Seedling Scout</div>
+      <div class="rank-progress-label">Progress to next rank: <span id="rank-next-label">Field Observer (10 finds)</span></div>
+      <div class="rank-bar-track"><div class="rank-bar-fill" id="rank-bar" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div style="font-family:'Courier Prime',monospace;font-size:0.65rem;letter-spacing:0.15em;color:var(--scan-green-dim);text-transform:uppercase;margin-bottom:0.75rem;">Achievements</div>
+  <div class="achievements-list" id="achievements-list"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+
+const RANKS = [
+  { title: 'Seedling Scout', icon: '🌱', min: 0, max: 10 },
+  { title: 'Field Observer', icon: '🔭', min: 10, max: 25 },
+  { title: 'Trail Tracker', icon: '🦶', min: 25, max: 50 },
+  { title: 'Naturalist', icon: '📖', min: 50, max: 100 },
+  { title: 'Wildlife Ranger', icon: '🌿', min: 100, max: 200 },
+  { title: 'Master Ecologist', icon: '🦅', min: 200, max: Infinity }
+];
+
+const ACHIEVEMENTS = [
+  { id: 'first_scan', icon: '🔬', name: 'First Contact', desc: 'Log your first specimen', check: s => s.total >= 1 },
+  { id: 'plant_5', icon: '🌿', name: 'Botanist', desc: 'Log 5 plants', check: s => s.plants >= 5 },
+  { id: 'animal_5', icon: '🐾', name: 'Tracker', desc: 'Log 5 animals', check: s => s.animals >= 5 },
+  { id: 'rare_find', icon: '💎', name: 'Rare Find', desc: 'Discover a Rare or Legendary specimen', check: s => s.rareFound },
+  { id: 'streak_7', icon: '🔥', name: 'Weekly Streak', desc: '7-day discovery streak', check: s => s.streak >= 7 },
+  { id: 'total_25', icon: '🏆', name: 'Quarter Century', desc: 'Log 25 specimens', check: s => s.total >= 25 },
+];
+
+let state = {
+  apiKey: 'AIzaSyDlYo11uR01yICVSAbiSbcVP180xsapw-Q',
+  collection: [],
+  totalScore: 0,
+  streak: 0,
+  lastLogDate: null,
+  currentEntry: null,
+  currentImageData: null
+};
+
+function loadState() {
+  try {
+    const s = localStorage.getItem('logidex_v1');
+    if (s) Object.assign(state, JSON.parse(s));
+  } catch(e) {}
+  if (state.apiKey) {
+    document.getElementById('api-key-input').value = state.apiKey;
+    document.getElementById('api-banner').style.display = 'none';
+  }
+  updateStreak();
+  renderAll();
+}
+
+function saveState() {
+  localStorage.setItem('logidex_v1', JSON.stringify(state));
+}
+
+function saveApiKeyBtn() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) { showToast('PASTE YOUR API KEY FIRST'); return; }
+  state.apiKey = val;
+  saveState();
+  document.getElementById('api-confirmed').style.display = 'block';
+  document.getElementById('api-banner').style.borderColor = 'rgba(58,255,122,0.3)';
+  document.getElementById('api-banner').style.background = 'rgba(58,255,122,0.04)';
+  document.getElementById('api-banner-text') && (document.getElementById('api-banner-text').style.display = 'none');
+  showToast('✓ API KEY SAVED');
+  setTimeout(() => {
+    document.getElementById('api-banner').style.display = 'none';
+  }, 1500);
+}
+
+function saveApiKey(val) {
+  state.apiKey = val.trim();
+  saveState();
+}
+
+function updateStreak() {
+  const today = new Date().toDateString();
+  if (!state.lastLogDate) return;
+  const last = new Date(state.lastLogDate);
+  const diff = Math.floor((new Date() - last) / 86400000);
+  if (diff > 1) state.streak = 0;
+}
+
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'collection') renderCollection();
+  if (name === 'profile') renderProfile();
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('scanner-area').classList.add('drag-over');
+}
+function handleDragLeave(e) {
+  document.getElementById('scanner-area').classList.remove('drag-over');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('scanner-area').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadImageFile(file);
+}
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) loadImageFile(file);
+}
+
+function loadImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const dataUrl = e.target.result;
+    state.currentImageData = dataUrl.split(',')[1];
+    const img = document.getElementById('preview-img');
+    img.src = dataUrl;
+    img.style.display = 'block';
+    document.getElementById('scanner-idle').style.display = 'none';
+    document.getElementById('entry-card').style.display = 'none';
+    document.getElementById('btn-analyze').disabled = false;
+    document.getElementById('btn-log').disabled = true;
+    state.currentEntry = null;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analyzeImage() {
+  if (!state.apiKey) { showToast('API KEY REQUIRED'); return; }
+  if (!state.currentImageData) { showToast('NO IMAGE LOADED'); return; }
+
+  document.getElementById('scanning-overlay').style.display = 'flex';
+  document.getElementById('preview-img').style.display = 'none';
+  document.getElementById('entry-card').style.display = 'none';
+  document.getElementById('btn-analyze').disabled = true;
+
+  const prompt = `You are the Logi-Dex field scanner — a gamified naturalist identification system.
+Analyze this image and identify the plant or animal shown. Respond ONLY with a valid JSON object, no markdown, no explanation.
+
+{
+  "name": "Common name",
+  "scientific": "Scientific name (Genus species)",
+  "kingdom": "PLANT or ANIMAL",
+  "types": ["up to 3 short type tags like MAMMAL, CONIFER, RAPTOR, WILDFLOWER, INSECT, REPTILE, FUNGI, AQUATIC etc"],
+  "habitat": "Short habitat description (forest, prairie, wetland, urban, etc.)",
+  "region": "Primary geographic region",
+  "lifespan": "e.g. 5-10 years or 2-3 weeks",
+  "size": "e.g. 30-50 cm or 2-5 m",
+  "diet": "e.g. Herbivore or Insectivore",
+  "conservation": "LC, NT, VU, EN, CR, or EX (IUCN status)",
+  "speed": 0-100,
+  "stealth": 0-100,
+  "rarityScore": 0-100,
+  "danger": 0-100,
+  "rarity": "COMMON, UNCOMMON, RARE, or LEGENDARY",
+  "points": number between 10 and 500 based on rarity,
+  "fieldNotes": "2-3 sentences of engaging educational field notes. Write like a naturalist — precise, vivid, fascinating. Include one surprising fact.",
+  "confidence": 0-100
+}
+
+If you cannot identify a plant or animal in the image, return: {"error": "No identifiable specimen detected"}`;
+
+  try {
+    const res = await fetch(`${GEMINI_API}?key=${state.apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { inline_data: { mime_type: 'image/jpeg', data: state.currentImageData } },
+          { text: prompt }
+        ]}],
+        generationConfig: { temperature: 0.3 }
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'API error');
+
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    text = text.replace(/```json|```/g, '').trim();
+    const entry = JSON.parse(text);
+
+    if (entry.error) { showToast('SPECIMEN UNIDENTIFIED'); resetScanning(); return; }
+
+    state.currentEntry = entry;
+    state.currentEntry.imageData = state.currentImageData;
+    state.currentEntry.timestamp = new Date().toISOString();
+    state.currentEntry.id = Date.now();
+    state.currentEntry.entryNum = state.collection.length + 1;
+
+    displayEntry(entry);
+
+  } catch(e) {
+    console.error(e);
+    showToast('SCAN ERROR — CHECK API KEY');
+    resetScanning();
+  }
+}
+
+function displayEntry(e) {
+  document.getElementById('scanning-overlay').style.display = 'none';
+  document.getElementById('preview-img').style.display = 'none';
+
+  const num = String(e.entryNum || state.collection.length + 1).padStart(3, '0');
+  document.getElementById('entry-number').textContent = '#' + num;
+  document.getElementById('entry-name').textContent = e.name;
+  document.getElementById('entry-scientific').textContent = e.scientific;
+
+  const rb = document.getElementById('rarity-badge');
+  rb.textContent = e.rarity;
+  rb.className = 'rarity-badge rarity-' + e.rarity;
+
+  document.getElementById('entry-photo').src = 'data:image/jpeg;base64,' + e.imageData;
+  document.getElementById('entry-habitat').textContent = e.habitat || '—';
+  document.getElementById('entry-region').textContent = e.region || '—';
+
+  const typesEl = document.getElementById('entry-types');
+  typesEl.innerHTML = (e.types || []).map(t => `<span class="type-badge">${t}</span>`).join('');
+
+  document.getElementById('stat-lifespan').textContent = e.lifespan || '—';
+  document.getElementById('stat-size').textContent = e.size || '—';
+  document.getElementById('stat-diet').textContent = e.diet || '—';
+  document.getElementById('stat-status').textContent = e.conservation || '—';
+
+  setTimeout(() => {
+    setBar('speed', e.speed || 0);
+    setBar('stealth', e.stealth || 0);
+    setBar('rarity', e.rarityScore || 0);
+    setBar('danger', e.danger || 0);
+  }, 100);
+
+  document.getElementById('entry-description').textContent = e.fieldNotes || '—';
+  document.getElementById('entry-pts').textContent = e.points || 10;
+  document.getElementById('entry-location').textContent = 'LOCATION: ALBERTA, CA';
+
+  document.getElementById('entry-card').style.display = 'block';
+  document.getElementById('btn-log').disabled = false;
+  document.getElementById('btn-analyze').disabled = false;
+}
+
+function setBar(id, val) {
+  document.getElementById('bar-' + id).style.width = Math.min(100, val) + '%';
+  document.getElementById('bar-' + id + '-val').textContent = val;
+}
+
+function logEntry() {
+  if (!state.currentEntry) return;
+  const already = state.collection.find(c => c.id === state.currentEntry.id);
+  if (already) { showToast('ALREADY LOGGED'); return; }
+
+  state.collection.unshift(state.currentEntry);
+  state.totalScore += (state.currentEntry.points || 10);
+
+  const today = new Date().toDateString();
+  if (state.lastLogDate !== today) {
+    const last = state.lastLogDate ? new Date(state.lastLogDate) : null;
+    const diff = last ? Math.floor((new Date() - last) / 86400000) : 99;
+    state.streak = diff === 1 ? state.streak + 1 : 1;
+    state.lastLogDate = today;
+  }
+
+  saveState();
+  updateHeaders();
+  showToast('✓ ENTRY LOGGED — +' + (state.currentEntry.points || 10) + ' PTS');
+  document.getElementById('btn-log').disabled = true;
+}
+
+function clearScanner() {
+  state.currentEntry = null;
+  state.currentImageData = null;
+  document.getElementById('preview-img').style.display = 'none';
+  document.getElementById('preview-img').src = '';
+  document.getElementById('scanner-idle').style.display = 'block';
+  document.getElementById('entry-card').style.display = 'none';
+  document.getElementById('scanning-overlay').style.display = 'none';
+  document.getElementById('btn-analyze').disabled = true;
+  document.getElementById('btn-log').disabled = true;
+  document.getElementById('file-input').value = '';
+}
+
+function resetScanning() {
+  document.getElementById('scanning-overlay').style.display = 'none';
+  if (state.currentImageData) {
+    document.getElementById('preview-img').style.display = 'block';
+  } else {
+    document.getElementById('scanner-idle').style.display = 'block';
+  }
+  document.getElementById('btn-analyze').disabled = !state.currentImageData;
+}
+
+function updateHeaders() {
+  document.getElementById('hdr-total').textContent = state.collection.length;
+  document.getElementById('hdr-score').textContent = state.totalScore;
+  document.getElementById('hdr-streak').textContent = state.streak;
+}
+
+let currentFilter = 'ALL';
+function filterCollection(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCollection();
+}
+
+function renderCollection() {
+  let items = state.collection;
+  if (currentFilter === 'PLANT') items = items.filter(i => i.kingdom === 'PLANT');
+  if (currentFilter === 'ANIMAL') items = items.filter(i => i.kingdom === 'ANIMAL');
+  if (currentFilter === 'RARE') items = items.filter(i => i.rarity === 'RARE' || i.rarity === 'LEGENDARY');
+
+  const grid = document.getElementById('collection-grid');
+  if (!items.length) {
+    grid.innerHTML = '<div class="empty-collection">NO SPECIMENS MATCH THIS FILTER</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map((e, i) => {
+    const num = String(e.entryNum || i + 1).padStart(3, '0');
+    return `<div class="collection-card" onclick="viewEntry(${e.id})">
+      <div class="collection-card-rarity card-rarity-${e.rarity}"></div>
+      <img class="collection-card-img" src="data:image/jpeg;base64,${e.imageData}" alt="${e.name}" />
+      <div class="collection-card-body">
+        <div class="collection-card-name">${e.name}</div>
+        <div class="collection-card-meta">#${num} · ${e.points} PTS</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function viewEntry(id) {
+  const entry = state.collection.find(e => e.id === id);
+  if (!entry) return;
+  state.currentEntry = entry;
+  state.currentImageData = entry.imageData;
+  switchViewDirect('scan');
+  document.getElementById('scanner-idle').style.display = 'none';
+  document.getElementById('preview-img').style.display = 'none';
+  document.getElementById('btn-log').disabled = true;
+  displayEntry(entry);
+}
+
+function switchViewDirect(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelector('.nav-tab').classList.add('active');
+}
+
+function renderProfile() {
+  const total = state.collection.length;
+  document.getElementById('prof-total').textContent = total;
+  document.getElementById('prof-score').textContent = state.totalScore;
+  document.getElementById('prof-streak').textContent = state.streak;
+
+  const rarest = state.collection.find(e => e.rarity === 'LEGENDARY')
+    || state.collection.find(e => e.rarity === 'RARE')
+    || state.collection.find(e => e.rarity === 'UNCOMMON')
+    || state.collection[0];
+
+  if (rarest) {
+    document.getElementById('prof-rarest').textContent = rarest.name;
+    document.getElementById('prof-rarest-type').textContent = rarest.rarity;
+  }
+
+  const rank = RANKS.find(r => total >= r.min && total < r.max) || RANKS[RANKS.length - 1];
+  const nextRank = RANKS[RANKS.indexOf(rank) + 1];
+  document.getElementById('rank-icon').textContent = rank.icon;
+  document.getElementById('rank-title').textContent = rank.title;
+  const pct = nextRank ? Math.round(((total - rank.min) / (nextRank.min - rank.min)) * 100) : 100;
+  document.getElementById('rank-bar').style.width = pct + '%';
+  document.getElementById('rank-next-label').textContent = nextRank
+    ? `${nextRank.title} (${nextRank.min} finds)` : 'Max Rank Achieved';
+
+  const plants = state.collection.filter(e => e.kingdom === 'PLANT').length;
+  const animals = state.collection.filter(e => e.kingdom === 'ANIMAL').length;
+  const rareFound = state.collection.some(e => e.rarity === 'RARE' || e.rarity === 'LEGENDARY');
+  const stats = { total, plants, animals, rareFound, streak: state.streak };
+
+  const list = document.getElementById('achievements-list');
+  list.innerHTML = ACHIEVEMENTS.map(a => {
+    const unlocked = a.check(stats);
+    return `<div class="achievement ${unlocked ? 'unlocked' : ''}">
+      <div class="achievement-icon">${a.icon}</div>
+      <div>
+        <div class="achievement-name">${a.name}</div>
+        <div class="achievement-desc">${a.desc}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderAll() {
+  updateHeaders();
+  renderCollection();
+  renderProfile();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+loadState();
+</script>
+</body>
+</html>
